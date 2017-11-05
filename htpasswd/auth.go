@@ -8,6 +8,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"github.com/abbot/go-http-auth"
+	"github.com/learnfromgirls/argon2-go-withsecret"
 	"github.com/tarent/loginsrv/logging"
 	"golang.org/x/crypto/bcrypt"
 	"io"
@@ -15,20 +16,23 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"io/ioutil"
 )
 
 // File is a struct to serve an individual modTime
 type File struct {
-	name string
+	name    string
 	// Used in func reloadIfChanged to reload htpasswd file if it changed
 	modTime time.Time
 }
 
 // Auth is the htpassword authenticater
 type Auth struct {
-	filenames  []File
-	userHash   map[string]string
-	muUserHash sync.RWMutex
+	filenames    []File
+	userHash     map[string]string
+	muUserHash   sync.RWMutex
+	argonContext argon2_go_withsecret.Context
+	unsealed     bool
 }
 
 // NewAuth creates an htpassword authenticater
@@ -38,8 +42,16 @@ func NewAuth(filenames []string) (*Auth, error) {
 		htpasswdFiles = append(htpasswdFiles, File{name: file})
 	}
 
+	ac := argon2_go_withsecret.NewContext()
+	ac.SetMemory(1 << uint(18)) //256Mbytes so will fit on a nano EC2
+	ac.SetIterations(20) //20 times as slow. This is the master password used to derive the secret
+	// so will only be used once per boot
+	//initially no secret so we must protect against guessing.
+
 	a := &Auth{
 		filenames: htpasswdFiles,
+		argonContext : ac,
+		unsealed: false,
 	}
 	return a, a.parse(htpasswdFiles)
 }
@@ -94,6 +106,7 @@ func (a *Auth) Authenticate(username, password string) (bool, error) {
 	reloadIfChanged(a)
 	a.muUserHash.RLock()
 	defer a.muUserHash.RUnlock()
+	vaultUser := "vault"
 	if hash, exist := a.userHash[username]; exist {
 		h := []byte(hash)
 		p := []byte(password)
@@ -107,7 +120,69 @@ func (a *Auth) Authenticate(username, password string) (bool, error) {
 		if strings.HasPrefix(hash, "$apr1$") {
 			return compareMD5(h, p), nil
 		}
+		verySecurePrefix := "$argon2id$v=19$m=262144,t=20,p=2$"
+		argonPrefix := "$argon2"
+
+		if strings.HasPrefix(hash, argonPrefix) {
+			verified, err := a.argonContext.VerifyEncoded(h, p)
+			//special case
+			if a.unsealed == false && verified && err == nil && username == vaultUser && strings.HasPrefix(hash, verySecurePrefix) {
+				kdfinputp := "slightlydifferent" + password;
+				kdfinputsalt := "wellknownsaltfor"
+				//prefer not to use same instance for hash and verify
+				//we expect attacker to know salt and password modifier so do have a good password.
+				//attacker will be guessing but will be thwarted by the extra hard argon2 parameters.
+				ach := argon2_go_withsecret.NewContext()
+				ach.SetMemory(1 << uint(18)) //256Mbytes so will fit on a nano EC2
+				ach.SetIterations(20) //20 times as slow. This is deriving the secret
+
+				derivedSecret, err2 := ach.Hash([]byte(
+					kdfinputp), []byte(
+					kdfinputsalt))
+				if err2 == nil {
+					a.argonContext.SetSecret(derivedSecret)
+					a.unsealed = true
+					//very welcome to derive more secrets here.
+				} else {
+					return verified, err2
+				}
+			}
+			return verified, err
+		}
+
 		return false, fmt.Errorf("unknown algorithm for user %q", username)
+	} else {
+		//user does not exist
+		//special case
+		if a.unsealed == false  && username == vaultUser {
+			//bootstrap. create a user in /tmp/.htpasswd
+			vaultp := password;
+			salt, err := argon2_go_withsecret.NewRandomSalt()
+			if err == nil {
+				//prefer not to use same instance for hash and verify
+				//we expect attacker to know salt and password modifier so do have a good password.
+				//attacker will be guessing but will be thwarted by the extra hard argon2 parameters.
+				ach := argon2_go_withsecret.NewContext()
+				ach.SetMemory(1 << uint(18)) //256Mbytes so will fit on a nano EC2
+				ach.SetIterations(20) //20 times not default 3.
+				vhash, err2 := ach.HashEncoded([] byte(vaultp), salt)
+				if err2 == nil {
+					outstr := vaultUser + ":" + vhash + "\n"
+					d1 := []byte(outstr)
+					err3 := ioutil.WriteFile("/tmp/.htpasswd", d1, 0644)
+					if err3 == nil {
+						return true, nil
+					} else {
+						return false, err3
+					}
+
+				} else {
+					return false, err2
+				}
+			} else {
+				return false, err
+			}
+		}
 	}
 	return false, nil
 }
