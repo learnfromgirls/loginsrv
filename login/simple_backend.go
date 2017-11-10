@@ -3,6 +3,7 @@ package login
 import (
 	"errors"
 	"github.com/tarent/loginsrv/model"
+	"github.com/learnfromgirls/safesecrets"
 )
 
 // SimpleProviderName const with the providers name
@@ -42,7 +43,7 @@ func NewSimpleBackend(userPassword map[string]string) *SimpleBackend {
 }
 
 // Authenticate the user
-func (sb *SimpleBackend) Authenticate(username, password string) (bool, model.UserInfo, error) {
+func (sb *SimpleBackend) Authenticate(username, password string, ssa ...safesecrets.SecretSetter) (bool, model.UserInfo, error) {
 	if p, exist := sb.userPassword[username]; exist && p == password {
 		return true, model.UserInfo{Sub: username}, nil
 	}

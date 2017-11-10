@@ -117,6 +117,24 @@ func TestAuth_UnknownUser(t *testing.T) {
 	False(t, authenticated)
 }
 
+func TestAuth_VaultUser(t *testing.T) {
+	auth, err := NewAuth(writeTmpfile(testfile))
+	NoError(t, err)
+
+	authenticated, err := auth.Authenticate("vault", "secret")
+	//first time with no user will unseal and create bootstrap
+	NoError(t, err)
+	True(t, authenticated)
+
+	authenticated, err = auth.Authenticate("vault", "secret")
+	//second time with no user is unsealed so normal error paths occur
+	NoError(t, err)
+	False(t, authenticated)
+
+
+}
+
+
 func TestAuth_ErrorOnMissingFile(t *testing.T) {
 	_, err := NewAuth([]string{"/tmp/foo/bar/nothing"})
 	Error(t, err)
@@ -138,6 +156,23 @@ func TestAuth_BadMD5Format(t *testing.T) {
 	authenticated, err := a.Authenticate("foo", "secret")
 	NoError(t, err)
 	False(t, authenticated)
+}
+
+func TestAuth_Unseal(t *testing.T) {
+
+	a, err := NewAuth(writeTmpfile("vault:$argon2id$v=19$m=262144,t=20,p=2$z9hsIty9+M75Db/CbE0m+w$Bmz2HfPGHrdhJEZskRgC8OVPJIJnwTPqdMftW60uwF8"))
+	NoError(t, err)
+
+	authenticated, err := a.Authenticate("vault", "secret")
+	NoError(t, err)
+	True(t, authenticated)
+
+	//now authenticator is unsealed and has its secret so old vault hash no longer valid.
+	authenticated, err = a.Authenticate("vault", "secret")
+	NoError(t, err)
+	False(t, authenticated)
+
+
 }
 
 func TestAuth_Hashes_UnknownAlgoError(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 	"github.com/dgrijalva/jwt-go"
 	. "github.com/stretchr/testify/assert"
 	"github.com/tarent/loginsrv/model"
+
 	"github.com/tarent/loginsrv/oauth2"
 	"net/http"
 	"net/http/httptest"
@@ -45,11 +46,28 @@ func TestHandler_NewFromConfig(t *testing.T) {
 				Oauth: Options{
 					"github": {"client_id": "xxx", "client_secret": "YYY"},
 				},
+
 			},
 			1,
 			1,
 			false,
 		},
+		/** sadly cyclic dependencies prevent us referring to htpasswd
+		{
+			&Config{
+				Backends: Options{
+					"htpasswd": {"files": "/tmp/.htpasswd"},
+				},
+				Oauth: Options{
+					"github": {"client_id": "xxx", "client_secret": "YYY"},
+				},
+
+			},
+			1,
+			1,
+			false,
+		},
+		***/
 		{
 			&Config{Backends: Options{"simple": {"bob": "secret"}}},
 			1,

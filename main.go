@@ -1,11 +1,11 @@
 package main
 
 import (
-	_ "github.com/tarent/loginsrv/htpasswd"
+	_ "github.com/learnfromgirls/loginsrv/htpasswd"
 	_ "github.com/tarent/loginsrv/httpupstream"
 	_ "github.com/tarent/loginsrv/osiam"
 
-	"github.com/tarent/loginsrv/login"
+	"github.com/learnfromgirls/loginsrv/login"
 
 	"context"
 	"fmt"

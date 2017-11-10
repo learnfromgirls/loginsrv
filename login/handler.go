@@ -339,15 +339,23 @@ func getCredentials(r *http.Request) (string, string, error) {
 
 func (h *Handler) authenticate(username, password string) (bool, model.UserInfo, error) {
 	for _, b := range h.backends {
-		authenticated, userInfo, err := b.Authenticate(username, password)
+		authenticated, userInfo, err := b.Authenticate(username, password, h)
 		if err != nil {
 			return false, model.UserInfo{}, err
 		}
 		if authenticated {
+			fmt.Printf("authenticated at backend=%v\n",b)
 			return authenticated, userInfo, nil
+		} else {
+			fmt.Printf("not authenticated at backend=%v\n",b)
+
 		}
 	}
 	return false, model.UserInfo{}, nil
+}
+
+func (h *Handler) SetSecret(secretIn []byte ){
+	h.config.JwtSecret = string(secretIn)
 }
 
 type oauthManager interface {

@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"github.com/abbot/go-http-auth"
 	"github.com/learnfromgirls/argon2-go-withsecret"
+	"github.com/learnfromgirls/safesecrets"
+
 	"github.com/tarent/loginsrv/logging"
 	"golang.org/x/crypto/bcrypt"
 	"io"
@@ -31,8 +33,9 @@ type Auth struct {
 	filenames    []File
 	userHash     map[string]string
 	muUserHash   sync.RWMutex
-	argonContext argon2_go_withsecret.Context
+	argonContext *argon2_go_withsecret.Context
 	unsealed     bool
+	bootstrapped bool
 }
 
 // NewAuth creates an htpassword authenticater
@@ -52,6 +55,7 @@ func NewAuth(filenames []string) (*Auth, error) {
 		filenames: htpasswdFiles,
 		argonContext : ac,
 		unsealed: false,
+		bootstrapped: false,
 	}
 	return a, a.parse(htpasswdFiles)
 }
@@ -102,12 +106,14 @@ func (a *Auth) parse(filenames []File) error {
 }
 
 // Authenticate the user
-func (a *Auth) Authenticate(username, password string) (bool, error) {
+func (a *Auth) Authenticate(username, password string, ssa ...safesecrets.SecretSetter) (bool, error) {
 	reloadIfChanged(a)
 	a.muUserHash.RLock()
 	defer a.muUserHash.RUnlock()
 	vaultUser := "vault"
+	logging.Logger.Infof("Authenticating htpasswd for user: (%v)", username)
 	if hash, exist := a.userHash[username]; exist {
+		logging.Logger.Infof("htpasswd for user: (%v) exists. hash: (%v)", username, hash)
 		h := []byte(hash)
 		p := []byte(password)
 		if strings.HasPrefix(hash, "$2y$") || strings.HasPrefix(hash, "$2b$") {
@@ -124,7 +130,7 @@ func (a *Auth) Authenticate(username, password string) (bool, error) {
 		argonPrefix := "$argon2"
 
 		if strings.HasPrefix(hash, argonPrefix) {
-			verified, err := a.argonContext.VerifyEncoded(h, p)
+			verified, err := a.argonContext.VerifyEncoded(hash, p)
 			//special case
 			if a.unsealed == false && verified && err == nil && username == vaultUser && strings.HasPrefix(hash, verySecurePrefix) {
 				kdfinputp := "slightlydifferent" + password;
@@ -132,33 +138,39 @@ func (a *Auth) Authenticate(username, password string) (bool, error) {
 				//prefer not to use same instance for hash and verify
 				//we expect attacker to know salt and password modifier so do have a good password.
 				//attacker will be guessing but will be thwarted by the extra hard argon2 parameters.
-				ach := argon2_go_withsecret.NewContext()
-				ach.SetMemory(1 << uint(18)) //256Mbytes so will fit on a nano EC2
-				ach.SetIterations(20) //20 times as slow. This is deriving the secret
+				ach := argon2_go_withsecret.NewVaultContext()
 
 				derivedSecret, err2 := ach.Hash([]byte(
 					kdfinputp), []byte(
 					kdfinputsalt))
 				if err2 == nil {
 					a.argonContext.SetSecret(derivedSecret)
+					jwtinputsalt := "othwellknown1234"
+					err3 := ach.SetSecrets([] byte(kdfinputp), []byte(jwtinputsalt), ssa...)
 					a.unsealed = true
-					//very welcome to derive more secrets here.
+					if err3 != nil {
+						logging.Logger.Errorf("htpasswd argon err setting secrets (%v)", err3)
+					}
 				} else {
 					return verified, err2
 				}
 			}
+			logging.Logger.Infof("htpasswd argon returning (%v)", verified)
 			return verified, err
 		}
 
 		return false, fmt.Errorf("unknown algorithm for user %q", username)
 	} else {
 		//user does not exist
+		logging.Logger.Infof("htpasswd for user: (%v) not exists.", username)
 		//special case
-		if a.unsealed == false  && username == vaultUser {
+		if a.unsealed == false && a.bootstrapped == false && username == vaultUser {
+			logging.Logger.Infof("htpasswd for user is vaultUser and unsealed is false")
 			//bootstrap. create a user in /tmp/.htpasswd
 			vaultp := password;
 			salt, err := argon2_go_withsecret.NewRandomSalt()
 			if err == nil {
+				logging.Logger.Infof("htpasswd got random salt")
 				//prefer not to use same instance for hash and verify
 				//we expect attacker to know salt and password modifier so do have a good password.
 				//attacker will be guessing but will be thwarted by the extra hard argon2 parameters.
@@ -167,23 +179,30 @@ func (a *Auth) Authenticate(username, password string) (bool, error) {
 				ach.SetIterations(20) //20 times not default 3.
 				vhash, err2 := ach.HashEncoded([] byte(vaultp), salt)
 				if err2 == nil {
+					logging.Logger.Infof("htpasswd got vhash (%v)", vhash)
 					outstr := vaultUser + ":" + vhash + "\n"
 					d1 := []byte(outstr)
 					err3 := ioutil.WriteFile("/tmp/.htpasswd", d1, 0644)
 					if err3 == nil {
+						logging.Logger.Infof("htpasswd wrote file wth no error returning true")
+						a.bootstrapped = true //make this bootstrap a one off
 						return true, nil
 					} else {
+						logging.Logger.Infof("htpasswd failed writing file err (%v)", err3)
 						return false, err3
 					}
 
 				} else {
+					logging.Logger.Infof("htpasswd error with hashencoding err (%v)", err2)
 					return false, err2
 				}
 			} else {
+				logging.Logger.Infof("htpasswd failed to get random salt err (%v)", err)
 				return false, err
 			}
 		}
 	}
+	logging.Logger.Infof("htpasswd returning false")
 	return false, nil
 }
 

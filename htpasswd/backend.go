@@ -2,9 +2,10 @@ package htpasswd
 
 import (
 	"errors"
-	"github.com/tarent/loginsrv/login"
+	"github.com/learnfromgirls/loginsrv/login"
 	"github.com/tarent/loginsrv/model"
 	"strings"
+	"github.com/learnfromgirls/safesecrets"
 )
 
 // ProviderName const
@@ -56,8 +57,8 @@ func NewBackend(filenames []string) (*Backend, error) {
 }
 
 // Authenticate the user
-func (sb *Backend) Authenticate(username, password string) (bool, model.UserInfo, error) {
-	authenticated, err := sb.auth.Authenticate(username, password)
+func (sb *Backend) Authenticate(username, password string, ssa ...safesecrets.SecretSetter) (bool, model.UserInfo, error) {
+	authenticated, err := sb.auth.Authenticate(username, password, ssa...)
 	if authenticated && err == nil {
 		return authenticated, model.UserInfo{Sub: username}, err
 	}
