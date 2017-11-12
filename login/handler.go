@@ -8,6 +8,7 @@ import (
 	"github.com/tarent/loginsrv/logging"
 	"github.com/tarent/loginsrv/model"
 	"github.com/tarent/loginsrv/oauth2"
+	mholtcaddy "github.com/mholt/caddy"
 	"io/ioutil"
 	"net/http"
 	"strings"
@@ -356,6 +357,7 @@ func (h *Handler) authenticate(username, password string) (bool, model.UserInfo,
 
 func (h *Handler) SetSecret(secretIn []byte ){
 	h.config.JwtSecret = string(secretIn)
+	mholtcaddy.EmitEvent("setJWTSecret", h.config.JwtSecret)
 }
 
 type oauthManager interface {
