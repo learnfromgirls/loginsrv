@@ -2,7 +2,7 @@ package caddy
 
 import (
 	"github.com/mholt/caddy/caddyhttp/httpserver"
-	"github.com/tarent/loginsrv/login"
+	"github.com/learnfromgirls/loginsrv/login"
 	"net/http"
 	"strings"
 )

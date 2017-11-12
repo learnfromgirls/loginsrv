@@ -195,8 +195,7 @@ func LifecycleStart(appName string, args interface{}) {
 		}
 	}
 
-	Logger.WithFields(fields).Infof("" +
-		"starting application: %v", appName)
+	Logger.WithFields(fields).Infof("starting application: %v", appName)
 }
 
 // LifecycleStop logs the stop of an application
