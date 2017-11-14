@@ -357,7 +357,7 @@ func (h *Handler) authenticate(username, password string) (bool, model.UserInfo,
 
 func (h *Handler) SetSecret(secretIn []byte ){
 	h.config.JwtSecret = string(secretIn)
-	mholtcaddy.EmitEvent("setJWTSecret", h.config.JwtSecret)
+	mholtcaddy.EmitEvent("setJWTSecret", secretIn)
 }
 
 type oauthManager interface {

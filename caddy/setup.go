@@ -26,14 +26,8 @@ func init() {
 		Action:     setup,
 	})
 
-	caddy.RegisterEventHook("setJWTSecret", setJWTSecretHook)
 }
 
-//type EventHook func(eventType EventName, eventInfo interface{}) error
-func setJWTSecretHook(eventType caddy.EventName, eventInfo interface{}) error {
-	fmt.Printf("event hook called %v info=%v\n", eventType, eventInfo)
-	return nil
-}
 
 // setup configures a new loginsrv instance.
 func setup(c *caddy.Controller) error {
