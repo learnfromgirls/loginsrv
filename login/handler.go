@@ -244,7 +244,9 @@ func (h *Handler) respondAuthenticated(w http.ResponseWriter, r *http.Request, u
 
 func (h *Handler) createToken(userInfo jwt.Claims) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS512, userInfo)
-	return token.SignedString([]byte(h.config.JwtSecret))
+	sec := []byte(h.config.JwtSecret)
+	//fmt.Printf("createToken secret starts with %v\n", sec[0:2])
+	return token.SignedString(sec)
 }
 
 func (h *Handler) getToken(r *http.Request) (userInfo model.UserInfo, valid bool) {
@@ -254,7 +256,9 @@ func (h *Handler) getToken(r *http.Request) (userInfo model.UserInfo, valid bool
 	}
 
 	token, err := jwt.ParseWithClaims(c.Value, &model.UserInfo{}, func(*jwt.Token) (interface{}, error) {
-		return []byte(h.config.JwtSecret), nil
+		sec := []byte(h.config.JwtSecret)
+		//fmt.Printf("getToken secret starts with %v\n", sec[0:2])
+		return sec, nil
 	})
 	if err != nil {
 		return model.UserInfo{}, false
